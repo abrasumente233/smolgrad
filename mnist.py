@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import trange
 import torch
+import math
 
 def fetch(url):
     import requests, gzip, os, hashlib
@@ -81,10 +82,6 @@ def torch_train(X_train, Y_train):
         losses.append(loss)
         t.set_description('loss={:.2f}, acc={:2f}'.format(loss, acc))
 
-    # plt.ylim(-1, 2)
-    # plt.plot(losses)
-    # plt.plot(accuracies)
-
     return model, (losses, accuracies)
 
 def log_softmax(x):
@@ -104,15 +101,38 @@ def smol_eval(X_test, Y_test, weights):
     acc = (preds == Y_test).mean()
     return acc
 
+def kaiming_init(shape):
+    dim = len(shape)
+    if dim < 2:
+        raise ValueError('Fan in can not be computed for tensor with fewer than 2 dimensions')
+
+    num_input_fmaps = shape[1]
+    receptive_field_size = 1
+    if dim > 2:
+        # math.prod is not always available, accumulate the product manually
+        # we could use functools.reduce but that is not supported by TorchScript
+        for s in shape[2:]:
+            receptive_field_size *= s
+    fan_in = num_input_fmaps * receptive_field_size
+
+    std = math.sqrt(2.0) / math.sqrt(fan_in)
+    bound = math.sqrt(3.0) * std
+    w = np.random.uniform(-bound, bound, shape)
+    return w
+
 def smol_train(X_train, Y_train):
     # init weights
     torch_net = SmolNet()
 
+    # kaiming init
+    l1 = kaiming_init((28 * 28, 128))
+    l2 = kaiming_init((128, 10))
+
     # borrow initialization from pytorch
-    l1 = np.zeros(((28 * 28, 128)))
-    l2 = np.zeros(((128, 10)))
-    l1[:] = torch_net.l1.weight.detach().numpy().transpose()
-    l2[:] = torch_net.l2.weight.detach().numpy().transpose()
+    # l1 = np.zeros(((28 * 28, 128)))
+    # l2 = np.zeros(((128, 10)))
+    # l1[:] = torch_net.l1.weight.detach().numpy().transpose()
+    # l2[:] = torch_net.l2.weight.detach().numpy().transpose()
 
     # l1[:] = torch_l1
     # l2[:] = torch_l2
@@ -185,23 +205,9 @@ def smol_train(X_train, Y_train):
         losses.append(loss.mean())
         t.set_description('loss={:2f}, acc={:2f}'.format(loss.mean(), acc))
 
-        # plot grad for sanity check
-        #plt.figure()
-        #plt.title("dl1.grad")
-        #imshow(dl1.T)
-        #plt.figure()
-        #plt.title("dl2.grad")
-        #imshow(dl2.T)
-        #print(dx_l2)
-
-    # plt.ylim(-1, 2)
-    # plt.plot(accuracies)
-    # plt.plot(losses)
-    # plt.legend(labels=['acc', 'loss'])
-
     return (l1, l2), (losses, accuracies)
 
-def main():
+def train_everything():
     train, test = fetch_mnist()
 
     weights, _ = smol_train(*train)
@@ -209,6 +215,10 @@ def main():
 
     model, _ = torch_train(*train)
     print("eval acc", torch_eval(*test, model))
+
+def main():
+    train_everything()
+    #print(kaiming_init((2,2)))
 
 if __name__ == '__main__':
     main()
