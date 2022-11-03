@@ -131,7 +131,7 @@ class Dot(Op):
     def backward(
         inputs: List[NpArray], grad_output: NpArray
     ) -> NpArray | List[NpArray]:
-        return [grad_output.dot(inputs[1].T), grad_output.T.dot(inputs[0])]
+        return [grad_output.dot(inputs[1].T), inputs[0].T.dot(grad_output)]
 
 # f = f(x + y)
 # (x + y).shape = (x1, x2) (assume no broadcast)
@@ -150,8 +150,7 @@ class Add(Op):
     ) -> NpArray | List[NpArray]:
         return list(map(lambda x: np.multiply(np.ones_like(x), grad_output), inputs))
 
-
-if __name__ == "__main__":
+def test_scalar() -> None:
     x = Tensor(np.array([2]))
     y = Tensor(np.array([3]))
     z = Tensor(np.array([8]))
@@ -163,11 +162,44 @@ if __name__ == "__main__":
     q = x.add(y)
     f = q.dot(z)
 
-    print("f = q * (x + y) =", f.data)
+    print("f = z * (x + y) =", f.data)
+    assert f.data == 40.0
 
     f.backward()
-    print("f.grad =", f.grad)
-    print("q.grad =", q.grad)
-    print("z.grad =", z.grad)
-    print("x.grad =", x.grad)
-    print("y.grad =", y.grad)
+    assert f.grad == 1.0
+    assert q.grad == 8.0
+    assert z.grad == 5.0
+    assert x.grad == 8.0
+    assert y.grad == 8.0
+
+def test_vector() -> None:
+    x = Tensor(np.array([[1, 2], [3, 4], [5, 6]]))
+    y = Tensor(np.array([[1, 2], [3, 4], [5, 6]]))
+    z = Tensor(np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]))
+
+    print('x =', x.data)
+    print('y =', y.data)
+    print('z =', z.data)
+
+    q = x.add(y)
+    f = z.dot(q)
+
+    print("f = z * (x + y) =", f.data)
+    assert (f.data == np.array([[44.0, 56.0], [98.0, 128.0], [152.0, 200.0]])).all()
+
+    f.backward()
+    print('f.grad =', f.grad)
+    print('q.grad =', q.grad)
+    print('z.grad =', z.grad)
+    print('x.grad =', x.grad)
+    print('y.grad =', y.grad)
+    # assert f.grad == 1.0
+    # assert q.grad == 8.0
+    # assert z.grad == 5.0
+    # assert x.grad == 8.0
+    # assert y.grad == 8.0
+
+
+if __name__ == "__main__":
+    # test_scalar()
+    test_vector()
